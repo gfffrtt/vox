@@ -135,7 +135,7 @@ private struct EmptyHistory: View {
         VStack(spacing: 14) {
             Image(systemName: "waveform.circle.fill")
                 .font(.system(size: 52))
-                .foregroundStyle(.tint)
+                .foregroundStyle(.primary)
             Text("No transcriptions yet")
                 .font(.title3.weight(.semibold))
             if let shortcut {
@@ -169,11 +169,8 @@ private struct TranscriptCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 10) {
-                HStack(spacing: 5) {
-                    ProfileIconView(symbol: transcript.profileIcon, color: transcript.profileColor, size: 16)
-                    Text(transcript.profileName)
-                }
-                .font(.caption.weight(.medium))
+                Text(transcript.profileName)
+                    .font(.caption.weight(.medium))
                 Text(transcript.date.formatted(date: .omitted, time: .shortened))
                 Text("\(transcript.wordCount) words")
                 Spacer()
@@ -194,7 +191,6 @@ private struct TranscriptCard: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .tint(copied ? .green : nil)
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -202,7 +198,7 @@ private struct TranscriptCard: View {
         .card()
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.accentColor.opacity(hovering ? 0.35 : 0))
+                .strokeBorder(Color.primary.opacity(hovering ? 0.2 : 0))
         )
         .contentShape(Rectangle())
         .onHover { hovering in

@@ -16,6 +16,9 @@ struct Shortcut: Codable, Hashable {
         keyLabel: "E"
     )
 
+    /// Not recordable (no modifiers); only used to render the esc keycap.
+    static let escape = Shortcut(keyCode: UInt16(kVK_Escape), modifiers: 0, keyLabel: "esc")
+
     var flags: CGEventFlags { CGEventFlags(rawValue: modifiers) }
 
     /// Keys macOS always reports with the fn flag set (F-keys, arrows, etc.).

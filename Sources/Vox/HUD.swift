@@ -16,9 +16,13 @@ final class HUDModel: ObservableObject {
     @Published var phase = Phase.hidden
     @Published var profileName = ""
     @Published var mode = RecordMode.toggle
+    @Published var shortcut: Shortcut?
     @Published var levels = [CGFloat](repeating: 0, count: barCount)
     /// Text of the last successful transcription, offered by the copy button.
     var lastText = ""
+    /// Called by the pill's stop button and esc hint.
+    var onStop: () -> Void = {}
+    var onCancel: () -> Void = {}
     /// Whether the cursor is over the pill; it sits at half opacity otherwise.
     @Published var hovered = false
     /// The pill's frame in the panel's content view (top-left origin), used for hover tracking.
@@ -26,6 +30,7 @@ final class HUDModel: ObservableObject {
 
     func beginRecording(profile: Profile, mode: RecordMode) {
         profileName = profile.name
+        shortcut = profile.shortcut
         self.mode = mode
         levels = [CGFloat](repeating: 0, count: Self.barCount)
         phase = .recording
@@ -68,11 +73,10 @@ final class HUDController {
 
     private func update(for phase: HUDModel.Phase) {
         hideWork?.cancel()
-        // Only the success pill has something to click (the copy button).
-        if case .success = phase {
-            panel.ignoresMouseEvents = false
-        } else {
-            panel.ignoresMouseEvents = true
+        // Only the recording (stop/cancel) and success (copy) pills have something to click.
+        switch phase {
+        case .recording, .success: panel.ignoresMouseEvents = false
+        default: panel.ignoresMouseEvents = true
         }
         trackHover(phase != .hidden)
         switch phase {
@@ -177,18 +181,46 @@ struct HUDView: View {
         case .hidden:
             EmptyView()
         case .recording:
-            VStack(spacing: 4) {
-                LevelBars(levels: model.levels)
-                HStack(spacing: 5) {
-                    Text(model.profileName).fontWeight(.semibold)
-                    Text("·")
-                    Text(model.mode == .toggle ? "Press shortcut to finish · esc to cancel" : "Release to finish · esc to cancel")
+            HStack(spacing: 14) {
+                VStack(spacing: 5) {
+                    LevelBars(levels: model.levels)
+                    HStack(spacing: 10) {
+                        Text(model.profileName).fontWeight(.semibold).lineLimit(1)
+                        Spacer(minLength: 0)
+                        HStack(spacing: 4) {
+                            if model.mode == .hold {
+                                Text("Release")
+                            } else if let shortcut = model.shortcut {
+                                KeycapsView(shortcut: shortcut, compact: true)
+                            }
+                            Image(systemName: "checkmark")
+                        }
+                        .help("Finish")
+                        Button(action: model.onCancel) {
+                            HStack(spacing: 4) {
+                                KeycapsView(shortcut: .escape, compact: true)
+                                Image(systemName: "xmark")
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Cancel")
+                    }
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.6))
                 }
-                .font(.system(size: 10.5))
-                .foregroundStyle(.white.opacity(0.6))
-                .lineLimit(1)
+                .frame(width: 280)
+
+                Button(action: model.onStop) {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.black)
+                        .frame(width: 28, height: 28)
+                        .background(.white, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Stop and transcribe")
             }
-            .frame(width: 300)
         case .transcribing:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
@@ -197,20 +229,13 @@ struct HUDView: View {
         case .success(let message):
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill").font(.system(size: 15))
-                Text(message)
+                Text(message).fixedSize()
                 if !model.lastText.isEmpty {
-                    Button {
+                    GhostIconButton(symbol: copied ? "checkmark" : "doc.on.doc", help: "Copy transcript") {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(model.lastText, forType: .string)
                         copied = true
-                    } label: {
-                        Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: 11, weight: .semibold))
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 4)
-                            .background(.white.opacity(0.14), in: Capsule())
                     }
-                    .buttonStyle(.plain)
                 }
             }
         case .failure(let message):
@@ -219,6 +244,27 @@ struct HUDView: View {
                 Text(message).lineLimit(2).frame(maxWidth: 340, alignment: .leading)
             }
         }
+    }
+}
+
+/// Icon-only button that only shows a background while hovered.
+private struct GhostIconButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 24, height: 24)
+                .background(.white.opacity(hovering ? 0.14 : 0), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .onHover { hovering = $0 }
     }
 }
 

@@ -25,6 +25,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             window.toolbar = NSToolbar(identifier: "VoxMain")
             window.toolbarStyle = .unified
             window.title = "Vox"
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.backgroundColor = NSColor(white: 0x12 / 255, alpha: 1)
             window.minSize = NSSize(width: 780, height: 500)
             window.setContentSize(NSSize(width: 940, height: 640))
             window.isReleasedWhenClosed = false
@@ -54,6 +56,8 @@ struct MainView: View {
                 Label("Profiles", systemImage: "person.crop.rectangle.stack").tag(AppStore.Pane.profiles)
                 Label("Settings", systemImage: "gearshape").tag(AppStore.Pane.settings)
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.voxBackground)
             .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 240)
             .safeAreaInset(edge: .bottom) { StatusFooter() }
         } detail: {
@@ -63,6 +67,10 @@ struct MainView: View {
             case .settings: SettingsPane()
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Color.voxBackground)
+        .toolbarBackground(Color.voxBackground, for: .windowToolbar)
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -104,7 +112,7 @@ private struct StatusFooter: View {
         switch store.activity {
         case .idle: store.hasAPIKey ? .green : .orange
         case .recording: .red
-        case .transcribing: .blue
+        case .transcribing: .white
         }
     }
 }

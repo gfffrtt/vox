@@ -26,6 +26,13 @@ enum Prefs {
         ])
     }
 
+    /// Overrides the system accent color for this app only, so selections, focus rings and
+    /// switches render in graphite instead of blue.
+    static func applyMonochromeAccent() {
+        UserDefaults.standard.set(-1, forKey: "AppleAccentColor")
+        UserDefaults.standard.set("0.847059 0.847059 0.862745 Graphite", forKey: "AppleHighlightColor")
+    }
+
     static var defaultModel: String {
         let model = UserDefaults.standard.string(forKey: PrefKey.defaultModel)?.trimmingCharacters(in: .whitespaces) ?? ""
         return model.isEmpty ? fallbackModel : model

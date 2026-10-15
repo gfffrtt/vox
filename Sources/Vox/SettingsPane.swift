@@ -1,5 +1,6 @@
 import AVFoundation
 import ApplicationServices
+import ServiceManagement
 import SwiftUI
 
 struct SettingsPane: View {
@@ -13,6 +14,8 @@ struct SettingsPane: View {
     @State private var accessibilityGranted = AXIsProcessTrusted()
     @State private var microphoneGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     @State private var confirmClear = false
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var launchAtLoginError: String?
 
     private let permissionTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
@@ -39,6 +42,18 @@ struct SettingsPane: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Open Vox at login", isOn: Binding(get: { launchAtLogin }, set: setLaunchAtLogin))
+            } header: {
+                Text("General")
+            } footer: {
+                if let launchAtLoginError {
+                    Text(launchAtLoginError)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Recording") {
@@ -68,14 +83,36 @@ struct SettingsPane: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .navigationTitle("Settings")
         .onReceive(permissionTimer) { _ in
             accessibilityGranted = AXIsProcessTrusted()
             microphoneGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+            launchAtLogin = SMAppService.mainApp.status == .enabled
         }
         .confirmationDialog("Clear all transcription history?", isPresented: $confirmClear) {
             Button("Clear History", role: .destructive) { store.clearHistory() }
         }
+    }
+
+    /// Login items live in the system (System Settings → General → Login Items), not in our
+    /// preferences, so the toggle always reflects and writes SMAppService's state.
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        launchAtLoginError = nil
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            launchAtLoginError = "Couldn't update the login item: \(error.localizedDescription)"
+        }
+        if SMAppService.mainApp.status == .requiresApproval {
+            launchAtLoginError = "Allow Vox in System Settings → General → Login Items."
+            SMAppService.openSystemSettingsLoginItems()
+        }
+        launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 }
 

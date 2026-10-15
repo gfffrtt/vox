@@ -53,17 +53,14 @@ private struct ProfileRow: View {
     let profile: Profile
 
     var body: some View {
-        HStack(spacing: 10) {
-            ProfileIconView(symbol: profile.icon, color: profile.color, size: 30)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(profile.name.isEmpty ? "Untitled" : profile.name)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
-                if let shortcut = profile.shortcut {
-                    KeycapsView(shortcut: shortcut, compact: true)
-                } else {
-                    Text("No shortcut").font(.caption).foregroundStyle(.tertiary)
-                }
+        VStack(alignment: .leading, spacing: 3) {
+            Text(profile.name.isEmpty ? "Untitled" : profile.name)
+                .font(.system(size: 13, weight: .medium))
+                .lineLimit(1)
+            if let shortcut = profile.shortcut {
+                KeycapsView(shortcut: shortcut, compact: true)
+            } else {
+                Text("No shortcut").font(.caption).foregroundStyle(.tertiary)
             }
         }
         .padding(.vertical, 4)
@@ -74,32 +71,20 @@ private struct ProfileEditor: View {
     @Binding var profile: Profile
     @EnvironmentObject private var store: AppStore
     @AppStorage(PrefKey.defaultModel) private var defaultModel = Prefs.fallbackModel
-    @State private var showAppearance = false
     @State private var confirmDelete = false
 
     var body: some View {
         Form {
             Section {
-                HStack(spacing: 14) {
-                    Button {
-                        showAppearance = true
-                    } label: {
-                        ProfileIconView(symbol: profile.icon, color: profile.color, size: 52)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Change icon and color")
-                    .popover(isPresented: $showAppearance, arrowEdge: .bottom) {
-                        AppearancePicker(icon: $profile.icon, color: $profile.color)
-                    }
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        TextField("Profile name", text: $profile.name)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 22, weight: .semibold))
-                        Text(modelSummary)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    // Label hidden so the name itself is the editable title, not a "label: value" row.
+                    TextField("Profile name", text: $profile.name, prompt: Text("Profile name"))
+                        .labelsHidden()
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 22, weight: .semibold))
+                    Text(modelSummary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 4)
             }
@@ -148,6 +133,7 @@ private struct ProfileEditor: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .confirmationDialog("Delete \"\(profile.name)\"?", isPresented: $confirmDelete) {
             Button("Delete Profile", role: .destructive) { store.deleteProfile(profile.id) }
         }
@@ -161,44 +147,5 @@ private struct ProfileEditor: View {
     private var conflict: String? {
         guard let shortcut = profile.shortcut else { return nil }
         return store.profiles.first { $0.id != profile.id && $0.shortcut == shortcut }?.name
-    }
-}
-
-private struct AppearancePicker: View {
-    @Binding var icon: String
-    @Binding var color: ProfileColor
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                ForEach(ProfileColor.allCases, id: \.self) { option in
-                    Circle()
-                        .fill(option.color.gradient)
-                        .frame(width: 20, height: 20)
-                        .overlay(Circle().strokeBorder(.white, lineWidth: option == color ? 2 : 0))
-                        .shadow(color: option == color ? option.color.opacity(0.6) : .clear, radius: 3)
-                        .onTapGesture { color = option }
-                }
-            }
-            Divider()
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 8), count: 8), spacing: 8) {
-                ForEach(Profile.icons, id: \.self) { symbol in
-                    Button {
-                        icon = symbol
-                    } label: {
-                        Image(systemName: symbol)
-                            .font(.system(size: 15))
-                            .frame(width: 36, height: 36)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(symbol == icon ? color.color.opacity(0.25) : Color.primary.opacity(0.05))
-                            )
-                            .foregroundStyle(symbol == icon ? color.color : .primary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(16)
     }
 }

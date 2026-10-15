@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Prefs.register()
         setUpStatusItem()
         hudController = HUDController(model: hud)
+        hud.onStop = { [weak self] in self?.finishIfRecording() }
+        hud.onCancel = { [weak self] in self?.cancelRecording() }
 
         hotkey.onPress = { [weak self] id in MainActor.assumeIsolated { self?.shortcutPressed(id) } }
         hotkey.onRelease = { [weak self] id in MainActor.assumeIsolated { self?.shortcutReleased(id) } }
@@ -96,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch activity {
         case .idle: button.contentTintColor = nil
         case .recording: button.contentTintColor = .systemRed
-        case .transcribing: button.contentTintColor = .controlAccentColor
+        case .transcribing: button.contentTintColor = nil
         }
     }
 
@@ -150,6 +152,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Prefs.recordMode == .hold, case .recording(let current) = store.activity, current == id {
             finishRecording()
         }
+    }
+
+    private func finishIfRecording() {
+        if case .recording = store.activity { finishRecording() }
     }
 
     private func startRecording(_ id: UUID) {

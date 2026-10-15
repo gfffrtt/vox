@@ -1,21 +1,11 @@
 import AppKit
 import SwiftUI
 
-struct ProfileIconView: View {
-    let symbol: String
-    let color: ProfileColor
-    var size: CGFloat = 28
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-            .fill(color.color.gradient)
-            .frame(width: size, height: size)
-            .overlay {
-                Image(systemName: symbol)
-                    .font(.system(size: size * 0.46, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-    }
+extension Color {
+    /// Off-black window background.
+    static let voxBackground = Color(white: 0x12 / 255)
+    /// Slightly lifted surface for cards.
+    static let voxSurface = Color(white: 0x1B / 255)
 }
 
 struct KeycapsView: View {
@@ -49,7 +39,7 @@ struct ShortcutRecorder: View {
             Button(action: toggle) {
                 Group {
                     if isRecording {
-                        Text("Press keys…").foregroundStyle(Color.accentColor)
+                        Text("Press keys…").foregroundStyle(.primary)
                     } else if let shortcut {
                         KeycapsView(shortcut: shortcut)
                     } else {
@@ -61,7 +51,7 @@ struct ShortcutRecorder: View {
                 .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(.background))
                 .overlay(
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(isRecording ? Color.accentColor : Color.primary.opacity(0.12), lineWidth: isRecording ? 2 : 1)
+                        .strokeBorder(isRecording ? Color.primary.opacity(0.8) : Color.primary.opacity(0.12), lineWidth: isRecording ? 2 : 1)
                 )
                 .contentShape(Rectangle())
             }
@@ -150,7 +140,7 @@ extension View {
     func card(padding: CGFloat = 14) -> some View {
         self
             .padding(padding)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(nsColor: .controlBackgroundColor)))
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.voxSurface))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.07)))
     }
 }
