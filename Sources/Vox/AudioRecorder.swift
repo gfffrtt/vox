@@ -16,11 +16,20 @@ final class AudioRecorder {
             AVLinearPCMIsBigEndianKey: false,
         ]
         let recorder = try AVAudioRecorder(url: url, settings: settings)
+        recorder.isMeteringEnabled = true
         guard recorder.record() else {
             throw GeminiError(message: "Could not start recording. Check microphone access.")
         }
         self.recorder = recorder
         self.fileURL = url
+    }
+
+    /// Current input level from 0 (silence) to 1.
+    func level() -> CGFloat {
+        guard let recorder else { return 0 }
+        recorder.updateMeters()
+        let decibels = max(-50, min(0, recorder.averagePower(forChannel: 0)))
+        return CGFloat((decibels + 50) / 50)
     }
 
     /// Stops recording and returns the audio along with its duration in seconds.

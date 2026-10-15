@@ -1,36 +1,63 @@
 import AppKit
 import AVFoundation
+import Combine
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private enum State { case idle, recording, transcribing }
-
-    private var state = State.idle { didSet { updateStatusIcon() } }
+    private let store = AppStore.shared
+    private let hud = HUDModel()
+    private var hudController: HUDController!
     private let hotkey = HotkeyMonitor()
     private let recorder = AudioRecorder()
-    private let settingsWindow = SettingsWindowController()
+    private lazy var mainWindow = MainWindowController(store: store)
 
     private var statusItem: NSStatusItem!
-    private let statusLine = NSMenuItem(title: "Ready — hold fn ⌘ E to dictate", action: nil, keyEquivalent: "")
+    private let statusLine = NSMenuItem(title: "Ready", action: nil, keyEquivalent: "")
     private let copyLastItem = NSMenuItem(title: "Copy Last Transcript", action: #selector(copyLast), keyEquivalent: "")
-    private var lastTranscript: String?
     private var accessibilityTimer: Timer?
+    private var levelTimer: Timer?
+    private var cancellables = Set<AnyCancellable>()
+    private var activeProfile: Profile?
 
     /// Recordings shorter than this are treated as accidental presses.
     private let minimumDuration: TimeInterval = 0.3
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Prefs.register()
+        NSApp.applicationIconImage = AppIcon.make()
         setUpStatusItem()
+        hudController = HUDController(model: hud)
 
-        hotkey.onPress = { [weak self] in MainActor.assumeIsolated { self?.hotkeyPressed() } }
-        hotkey.onRelease = { [weak self] in MainActor.assumeIsolated { self?.hotkeyReleased() } }
+        hotkey.onPress = { [weak self] id in MainActor.assumeIsolated { self?.shortcutPressed(id) } }
+        hotkey.onRelease = { [weak self] id in MainActor.assumeIsolated { self?.shortcutReleased(id) } }
+        hotkey.onEscape = { [weak self] in MainActor.assumeIsolated { self?.cancelRecording() } }
+
+        store.$profiles
+            .sink { [weak self] profiles in
+                self?.hotkey.bindings = profiles.compactMap { profile in profile.shortcut.map { (profile.id, $0) } }
+            }
+            .store(in: &cancellables)
+        store.$isCapturingShortcut
+            .sink { [weak self] capturing in self?.hotkey.isPaused = capturing }
+            .store(in: &cancellables)
+        store.$activity
+            .sink { [weak self] activity in self?.updateStatusIcon(activity) }
+            .store(in: &cancellables)
+        store.$history
+            .sink { [weak self] history in self?.copyLastItem.isEnabled = !history.isEmpty }
+            .store(in: &cancellables)
+
         startHotkey()
-
         AVCaptureDevice.requestAccess(for: .audio) { _ in }
 
-        if APIKeyStore.load() == nil {
-            settingsWindow.show()
+        if !store.hasAPIKey {
+            mainWindow.show(pane: .settings)
         }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        mainWindow.show()
+        return true
     }
 
     // MARK: Menu bar
@@ -38,32 +65,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setUpStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let menu = NSMenu()
+        menu.autoenablesItems = false
         statusLine.isEnabled = false
         menu.addItem(statusLine)
         menu.addItem(.separator())
+        menu.addItem(menuItem("Open Vox", #selector(openHome), "o"))
         copyLastItem.target = self
-        copyLastItem.isEnabled = false
         menu.addItem(copyLastItem)
-        let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
-        settings.target = self
-        menu.addItem(settings)
+        menu.addItem(menuItem("Settings…", #selector(openSettings), ","))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Vox", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-        menu.autoenablesItems = false
         statusItem.menu = menu
-        updateStatusIcon()
+        updateStatusIcon(.idle)
     }
 
-    private func updateStatusIcon() {
+    private func menuItem(_ title: String, _ action: Selector, _ key: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.target = self
+        return item
+    }
+
+    private func updateStatusIcon(_ activity: AppStore.Activity) {
         guard let button = statusItem?.button else { return }
         let symbol: String
-        switch state {
-        case .idle: symbol = "mic"
+        switch activity {
+        case .idle: symbol = "waveform"
         case .recording: symbol = "mic.fill"
-        case .transcribing: symbol = "waveform"
+        case .transcribing: symbol = "ellipsis"
         }
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Vox")
-        button.contentTintColor = state == .recording ? .systemRed : nil
+        switch activity {
+        case .idle: button.contentTintColor = nil
+        case .recording: button.contentTintColor = .systemRed
+        case .transcribing: button.contentTintColor = .controlAccentColor
+        }
     }
 
     private func setStatus(_ text: String) {
@@ -71,20 +106,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.toolTip = text
     }
 
-    @objc private func openSettings() {
-        settingsWindow.show()
-    }
+    @objc private func openHome() { mainWindow.show(pane: .home) }
+    @objc private func openSettings() { mainWindow.show(pane: .settings) }
 
     @objc private func copyLast() {
-        guard let lastTranscript else { return }
-        Paster.deliver(lastTranscript, autoPaste: false)
+        guard let last = store.history.first else { return }
+        Paster.deliver(last.text, autoPaste: false)
     }
 
     // MARK: Permissions
 
     private func startHotkey() {
         if hotkey.start() {
-            setStatus(readyMessage())
+            setStatus("Ready")
             return
         }
         // Prompts the user to grant Accessibility, then polls until it's granted.
@@ -95,83 +129,115 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated {
                 guard let self, self.hotkey.start() else { return }
                 timer.invalidate()
-                self.setStatus(self.readyMessage())
+                self.setStatus("Ready")
             }
         }
     }
 
-    private func readyMessage() -> String {
-        Settings.current().mode == .hold ? "Ready — hold fn ⌘ E to dictate" : "Ready — press fn ⌘ E to dictate"
-    }
-
     // MARK: Recording flow
 
-    private func hotkeyPressed() {
-        switch (Settings.current().mode, state) {
-        case (_, .idle): startRecording()
-        case (.toggle, .recording): finishRecording()
-        default: break
+    private func shortcutPressed(_ id: UUID) {
+        switch store.activity {
+        case .idle:
+            startRecording(id)
+        case .recording(let current) where current == id && Prefs.recordMode == .toggle:
+            finishRecording()
+        default:
+            break
         }
     }
 
-    private func hotkeyReleased() {
-        if Settings.current().mode == .hold, state == .recording {
+    private func shortcutReleased(_ id: UUID) {
+        if Prefs.recordMode == .hold, case .recording(let current) = store.activity, current == id {
             finishRecording()
         }
     }
 
-    private func startRecording() {
-        guard APIKeyStore.load() != nil else {
+    private func startRecording(_ id: UUID) {
+        guard let profile = store.profile(id) else { return }
+        guard store.hasAPIKey else {
             fail("Add your Gemini API key in Settings.")
-            settingsWindow.show()
+            mainWindow.show(pane: .settings)
             return
         }
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
-            fail("Microphone access is required (System Settings → Privacy & Security → Microphone).")
+            fail("Vox needs microphone access. Enable it in System Settings.")
             AVCaptureDevice.requestAccess(for: .audio) { _ in }
             return
         }
         do {
             try recorder.start()
-            state = .recording
-            setStatus("Recording…")
-            NSSound(named: "Tink")?.play()
         } catch {
             fail(error.localizedDescription)
+            return
+        }
+        activeProfile = profile
+        store.activity = .recording(id)
+        hotkey.swallowEscape = true
+        hud.beginRecording(profile: profile, mode: Prefs.recordMode)
+        setStatus("Recording · \(profile.name)")
+        play("Tink")
+        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.hud.push(level: self.recorder.level())
+            }
         }
     }
 
+    private func endRecording() -> (data: Data, duration: TimeInterval)? {
+        levelTimer?.invalidate()
+        levelTimer = nil
+        hotkey.swallowEscape = false
+        return recorder.stop()
+    }
+
+    private func cancelRecording() {
+        _ = endRecording()
+        activeProfile = nil
+        store.activity = .idle
+        hud.phase = .hidden
+        setStatus("Ready")
+    }
+
     private func finishRecording() {
-        guard let audio = recorder.stop() else {
-            state = .idle
+        let audio = endRecording()
+        guard let profile = activeProfile, let audio else {
+            cancelRecording()
             return
         }
-        NSSound(named: "Pop")?.play()
+        activeProfile = nil
+        play("Pop")
         guard audio.duration >= minimumDuration else {
-            state = .idle
-            setStatus(readyMessage())
+            cancelRecording()
             return
         }
 
-        state = .transcribing
+        store.activity = .transcribing(profile.id)
+        hud.phase = .transcribing
         setStatus("Transcribing…")
-        let settings = Settings.current()
+        let customModel = profile.model.trimmingCharacters(in: .whitespaces)
+        let model = customModel.isEmpty ? Prefs.defaultModel : customModel
         let apiKey = APIKeyStore.load() ?? ""
+        let autoPaste = Prefs.autoPaste
 
         Task {
             do {
-                let text = try await GeminiClient.transcribe(wav: audio.data, apiKey: apiKey, settings: settings)
-                state = .idle
-                if text.isEmpty {
-                    setStatus("No speech detected")
-                } else {
-                    lastTranscript = text
-                    copyLastItem.isEnabled = true
-                    Paster.deliver(text, autoPaste: settings.autoPaste)
-                    setStatus(readyMessage())
+                let text = try await GeminiClient.transcribe(wav: audio.data, apiKey: apiKey, model: model, profile: profile)
+                store.activity = .idle
+                setStatus("Ready")
+                guard !text.isEmpty else {
+                    hud.phase = .failure("No speech detected")
+                    return
                 }
+                store.addTranscript(Transcript(
+                    text: text, date: Date(), duration: audio.duration,
+                    profileID: profile.id, profileName: profile.name, profileIcon: profile.icon, profileColor: profile.color
+                ))
+                Paster.deliver(text, autoPaste: autoPaste)
+                hud.phase = .success(autoPaste ? "Pasted" : "Copied to clipboard")
             } catch {
-                state = .idle
+                store.activity = .idle
                 fail(error.localizedDescription)
             }
         }
@@ -179,6 +245,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func fail(_ message: String) {
         setStatus("Error: \(message)")
-        NSSound(named: "Basso")?.play()
+        hud.phase = .failure(message)
+        play("Basso")
+    }
+
+    private func play(_ sound: String) {
+        if Prefs.playSounds { NSSound(named: sound)?.play() }
+    }
+}
+
+/// Draws the app icon at runtime (shown in the Dock while the window is open).
+enum AppIcon {
+    static func make() -> NSImage {
+        let size = NSSize(width: 512, height: 512)
+        return NSImage(size: size, flipped: false) { rect in
+            let inset = rect.insetBy(dx: 40, dy: 40)
+            let path = NSBezierPath(roundedRect: inset, xRadius: 100, yRadius: 100)
+            NSGradient(colors: [
+                NSColor(red: 0.36, green: 0.42, blue: 1.0, alpha: 1),
+                NSColor(red: 0.62, green: 0.31, blue: 0.95, alpha: 1),
+            ])?.draw(in: path, angle: -60)
+
+            let config = NSImage.SymbolConfiguration(pointSize: 220, weight: .semibold)
+                .applying(.init(paletteColors: [.white]))
+            if let symbol = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)?
+                .withSymbolConfiguration(config) {
+                let s = symbol.size
+                symbol.draw(in: NSRect(x: rect.midX - s.width / 2, y: rect.midY - s.height / 2, width: s.width, height: s.height))
+            }
+            return true
+        }
     }
 }

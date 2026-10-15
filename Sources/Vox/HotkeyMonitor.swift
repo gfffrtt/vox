@@ -1,14 +1,22 @@
 import Carbon.HIToolbox
 import CoreGraphics
+import Foundation
 
-/// Watches for fn + ⌘ + E using a CGEvent tap (requires Accessibility permission)
-/// and swallows those key events so the frontmost app never sees them.
+/// Watches for the profiles' shortcuts using a CGEvent tap (requires Accessibility permission)
+/// and swallows matching key events so the frontmost app never sees them.
 final class HotkeyMonitor {
-    var onPress: () -> Void = {}
-    var onRelease: () -> Void = {}
+    var bindings: [(id: UUID, shortcut: Shortcut)] = []
+    /// Ignore all shortcuts (e.g. while the user is recording a new one in the UI).
+    var isPaused = false
+    /// Swallow Esc and report it via `onEscape` (used to cancel a recording).
+    var swallowEscape = false
+
+    var onPress: (UUID) -> Void = { _ in }
+    var onRelease: (UUID) -> Void = { _ in }
+    var onEscape: () -> Void = {}
 
     private var tap: CFMachPort?
-    private var isDown = false
+    private var held: (keyCode: Int64, id: UUID)?
 
     /// Returns false if the tap could not be created (usually missing Accessibility permission).
     func start() -> Bool {
@@ -31,32 +39,35 @@ final class HotkeyMonitor {
     }
 
     fileprivate func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        let pass = Unmanaged.passUnretained(event)
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
-            return Unmanaged.passUnretained(event)
+            return pass
         }
-        guard event.getIntegerValueField(.keyboardEventKeycode) == Int64(kVK_ANSI_E) else {
-            return Unmanaged.passUnretained(event)
-        }
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
 
         switch type {
         case .keyDown:
-            if isDown { return nil } // swallow auto-repeat while held
-            let flags = event.flags
-            guard flags.contains(.maskSecondaryFn), flags.contains(.maskCommand),
-                  !flags.contains(.maskControl), !flags.contains(.maskAlternate) else {
-                return Unmanaged.passUnretained(event)
+            if held?.keyCode == keyCode { return nil } // swallow auto-repeat while held
+            guard !isPaused else { return pass }
+            let modifiers = event.flags.intersection(Shortcut.relevantFlags)
+            if swallowEscape, keyCode == Int64(kVK_Escape), modifiers.isEmpty {
+                onEscape()
+                return nil
             }
-            isDown = true
-            onPress()
+            guard let binding = bindings.first(where: {
+                Int64($0.shortcut.keyCode) == keyCode && $0.shortcut.flags == modifiers
+            }) else { return pass }
+            held = (keyCode, binding.id)
+            onPress(binding.id)
             return nil
         case .keyUp:
-            guard isDown else { return Unmanaged.passUnretained(event) }
-            isDown = false
-            onRelease()
+            guard let held, held.keyCode == keyCode else { return pass }
+            self.held = nil
+            onRelease(held.id)
             return nil
         default:
-            return Unmanaged.passUnretained(event)
+            return pass
         }
     }
 }
