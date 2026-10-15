@@ -14,6 +14,18 @@ On first launch:
 2. Grant **Microphone**.
 3. Paste your Gemini API key in Settings (get one at https://aistudio.google.com/apikey).
 
+## Distributing
+
+```sh
+./make-dmg.sh   # → build/Vox-<version>.dmg
+```
+
+The DMG has the usual drag-to-Applications layout. The app is signed with the local self-signed identity,
+not an Apple Developer ID, so on other Macs Gatekeeper blocks the first launch. Users can allow it in
+**System Settings → Privacy & Security → Open Anyway**, or run `xattr -dr com.apple.quarantine /Applications/Vox.app`.
+
+The app icon lives in `Resources/AppIcon.icns`; regenerate it with `swift scripts/make-icon.swift Resources/AppIcon.icns`.
+
 `build.sh` signs the app with a self-signed "Vox Local Signing" identity (created on first build in
 `~/Library/Keychains/vox-signing.keychain-db`), so the Accessibility grant survives rebuilds.
 

@@ -24,7 +24,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Prefs.register()
-        NSApp.applicationIconImage = AppIcon.make()
         setUpStatusItem()
         hudController = HUDController(model: hud)
 
@@ -252,29 +251,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func play(_ sound: String) {
         if Prefs.playSounds { NSSound(named: sound)?.play() }
-    }
-}
-
-/// Draws the app icon at runtime (shown in the Dock while the window is open).
-enum AppIcon {
-    static func make() -> NSImage {
-        let size = NSSize(width: 512, height: 512)
-        return NSImage(size: size, flipped: false) { rect in
-            let inset = rect.insetBy(dx: 40, dy: 40)
-            let path = NSBezierPath(roundedRect: inset, xRadius: 100, yRadius: 100)
-            NSGradient(colors: [
-                NSColor(red: 0.36, green: 0.42, blue: 1.0, alpha: 1),
-                NSColor(red: 0.62, green: 0.31, blue: 0.95, alpha: 1),
-            ])?.draw(in: path, angle: -60)
-
-            let config = NSImage.SymbolConfiguration(pointSize: 220, weight: .semibold)
-                .applying(.init(paletteColors: [.white]))
-            if let symbol = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)?
-                .withSymbolConfiguration(config) {
-                let s = symbol.size
-                symbol.draw(in: NSRect(x: rect.midX - s.width / 2, y: rect.midY - s.height / 2, width: s.width, height: s.height))
-            }
-            return true
-        }
     }
 }

@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 APP=build/Vox.app
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 # Pick the newest SDK whose Swift interface was built by a compiler no newer than ours
 # (Command Line Tools can ship SDKs ahead of the installed compiler).
@@ -26,6 +26,9 @@ echo "Using SDK: ${SDKROOT:-default}"
 swiftc -O -swift-version 5 -target "$(uname -m)-apple-macos14.0" \
     -o "$APP/Contents/MacOS/Vox" Sources/Vox/*.swift
 
+# App icon (regenerate with: swift scripts/make-icon.swift Resources/AppIcon.icns).
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+
 cat > "$APP/Contents/Info.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -35,6 +38,7 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
     <key>CFBundleDisplayName</key><string>Vox</string>
     <key>CFBundleIdentifier</key><string>local.vox.Vox</string>
     <key>CFBundleExecutable</key><string>Vox</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundleVersion</key><string>1</string>
