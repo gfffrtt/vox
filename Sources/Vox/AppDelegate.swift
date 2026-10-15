@@ -218,7 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setStatus("Transcribing…")
         let customModel = profile.model.trimmingCharacters(in: .whitespaces)
         let model = customModel.isEmpty ? Prefs.defaultModel : customModel
-        let apiKey = APIKeyStore.load() ?? ""
+        let apiKey = store.apiKey
         let autoPaste = Prefs.autoPaste
 
         Task {
@@ -235,6 +235,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     profileID: profile.id, profileName: profile.name, profileIcon: profile.icon, profileColor: profile.color
                 ))
                 Paster.deliver(text, autoPaste: autoPaste)
+                hud.lastText = text
                 hud.phase = .success(autoPaste ? "Pasted" : "Copied to clipboard")
             } catch {
                 store.activity = .idle

@@ -9,7 +9,7 @@ struct SettingsPane: View {
     @AppStorage(PrefKey.autoPaste) private var autoPaste = true
     @AppStorage(PrefKey.playSounds) private var playSounds = true
 
-    @State private var apiKey = APIKeyStore.load() ?? ""
+    @State private var apiKey = AppStore.shared.apiKey
     @State private var accessibilityGranted = AXIsProcessTrusted()
     @State private var microphoneGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     @State private var confirmClear = false

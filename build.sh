@@ -45,8 +45,31 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
 </plist>
 EOF
 
-# Ad-hoc signature. macOS ties Accessibility/Microphone grants to the signature,
-# so after a rebuild you may need to re-enable Vox in Privacy & Security.
-codesign --force --sign - "$APP"
+# Sign with a stable self-signed identity kept in its own keychain. macOS ties Accessibility
+# grants and keychain access to the code signature; an ad-hoc signature changes on every build,
+# which silently revokes Accessibility and makes the keychain prompt for a password again.
+IDENTITY="Vox Local Signing"
+KEYCHAIN="$HOME/Library/Keychains/vox-signing.keychain-db"
+KEYCHAIN_PASS="vox-signing"
+if [ ! -f "$KEYCHAIN" ]; then
+    echo "Creating local signing identity \"$IDENTITY\""
+    TMP=$(mktemp -d)
+    openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN=$IDENTITY" \
+        -keyout "$TMP/key.pem" -out "$TMP/cert.pem" \
+        -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=critical,codeSigning" \
+        -addext "basicConstraints=critical,CA:false" 2>/dev/null
+    openssl pkcs12 -export -inkey "$TMP/key.pem" -in "$TMP/cert.pem" -out "$TMP/id.p12" -passout pass:vox
+    security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+    security set-keychain-settings "$KEYCHAIN"   # no auto-lock
+    security import "$TMP/id.p12" -k "$KEYCHAIN" -P vox -T /usr/bin/codesign >/dev/null
+    security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN" >/dev/null
+    rm -rf "$TMP"
+fi
+# codesign only finds identities in keychains on the user search list.
+if ! security list-keychains -d user | grep -q "vox-signing.keychain-db"; then
+    eval "security list-keychains -d user -s $(security list-keychains -d user | tr '\n' ' ') \"$KEYCHAIN\""
+fi
+security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+codesign --force --keychain "$KEYCHAIN" --sign "$IDENTITY" --identifier local.vox.Vox "$APP"
 
 echo "Built $APP"

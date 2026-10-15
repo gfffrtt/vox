@@ -15,7 +15,8 @@ final class AppStore: ObservableObject {
     @Published var history: [Transcript] { didSet { save(history, to: "history.json") } }
     @Published var activity = Activity.idle
     @Published var isCapturingShortcut = false
-    @Published private(set) var hasAPIKey: Bool
+    @Published private(set) var apiKey: String
+    var hasAPIKey: Bool { !apiKey.isEmpty }
 
     @Published private(set) var models: [String] = []
     @Published private(set) var modelsError: String?
@@ -31,7 +32,7 @@ final class AppStore: ObservableObject {
     }()
 
     private init() {
-        hasAPIKey = APIKeyStore.load() != nil
+        apiKey = Prefs.apiKey
         history = Self.load([Transcript].self, from: "history.json") ?? []
         if let saved = Self.load([Profile].self, from: "profiles.json"), !saved.isEmpty {
             profiles = saved
@@ -88,12 +89,15 @@ final class AppStore: ObservableObject {
     // MARK: API key & models
 
     func setAPIKey(_ key: String) {
-        APIKeyStore.save(key)
-        hasAPIKey = APIKeyStore.load() != nil
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != apiKey else { return }
+        Prefs.apiKey = trimmed
+        apiKey = trimmed
     }
 
     func refreshModels() async {
-        guard let key = APIKeyStore.load(), !loadingModels else { return }
+        guard hasAPIKey, !loadingModels else { return }
+        let key = apiKey
         loadingModels = true
         defer { loadingModels = false }
         do {
