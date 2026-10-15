@@ -25,6 +25,8 @@ not an Apple Developer ID, so on other Macs Gatekeeper blocks the first launch. 
 **System Settings → Privacy & Security → Open Anyway**, or run `xattr -dr com.apple.quarantine /Applications/Vox.app`.
 
 The app icon lives in `Resources/AppIcon.icns`; regenerate it with `swift scripts/make-icon.swift Resources/AppIcon.icns`.
+The installer window background lives in `Resources/DMGBackground.tiff`; regenerate it with
+`swift scripts/make-dmg-background.swift Resources/DMGBackground.tiff`.
 
 `build.sh` signs the app with a self-signed "Vox Local Signing" identity (created on first build in
 `~/Library/Keychains/vox-signing.keychain-db`), so the Accessibility grant survives rebuilds.
