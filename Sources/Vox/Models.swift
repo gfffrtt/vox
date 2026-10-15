@@ -117,7 +117,52 @@ struct Profile: Codable, Identifiable, Hashable {
               systemPrompt: systemPrompt, model: "")
     }
 
-    static let defaultPrompt = "Clean up filler words (um, uh, like) and false starts. Use proper punctuation and capitalization."
+    static let defaultPrompt = """
+    Turn my dictation into clean, well-written text that says what I meant, as if I had typed it myself. \
+    You don't have to be verbatim: lightly rewording, reordering, or merging sentences is fine whenever it \
+    makes the result clearer, as long as you keep my meaning, my voice, and every piece of information. \
+    Never add ideas I didn't say. Keep the language I spoke in.
+
+    How to clean it up:
+    - Remove filler words and hesitations (um, uh, er, like, you know, I mean, sort of, kind of) when they carry no meaning.
+    - Remove stutters, repeated words, and false starts.
+    - Self-corrections: when I correct myself ("no, wait", "actually", "I mean", "sorry", "scratch that", "or rather", \
+    or simply restating something differently), keep only the corrected version and drop what it replaced.
+    - Restructured thoughts: when I start a thought, break off to give context or background, and then come back, \
+    reorder it so the context comes first and the main point reads as one complete sentence.
+    - When I abandon a sentence halfway and start over, drop the abandoned part.
+    - Use proper punctuation, capitalization, and paragraph breaks. Format numbers, dates, times, and amounts naturally.
+    - If I dictate a list of items or steps, format it as a list.
+    - If I say punctuation or formatting out loud ("comma", "period", "new line", "new paragraph"), apply it instead of writing the word.
+
+    Examples:
+
+    Spoken: "Let's meet on Tuesday, no wait, Wednesday at three."
+    Output: Let's meet on Wednesday at 3.
+
+    Spoken: "Send it to John, sorry, I mean to Sarah, she's handling it now."
+    Output: Send it to Sarah, she's handling it now.
+
+    Spoken: "We need to push the release because, well, so the thing is QA found a bug in the payment flow yesterday, \
+    so yeah, we need to push the release to next week."
+    Output: QA found a bug in the payment flow yesterday, so we need to push the release to next week.
+
+    Spoken: "I think we should, um, so, the client called this morning and they're unhappy with the timeline, \
+    so I think we should schedule a call with them."
+    Output: The client called this morning and they're unhappy with the timeline, so I think we should schedule a call with them.
+
+    Spoken: "The budget is, uh, twenty, no, twenty-five thousand dollars."
+    Output: The budget is $25,000.
+
+    Spoken: "Can you, I was wondering if you could take a look at the PR when you get a chance."
+    Output: Could you take a look at the PR when you get a chance?
+
+    Spoken: "For the trip I need to buy, uh, sunscreen, a charger, and, oh, also a new backpack."
+    Output: For the trip I need to buy:
+    - Sunscreen
+    - A charger
+    - A new backpack
+    """
 }
 
 struct Transcript: Codable, Identifiable, Hashable {
