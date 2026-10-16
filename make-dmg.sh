@@ -1,11 +1,28 @@
 #!/bin/bash
-# Builds Vox.app and packages it as build/Vox.dmg (drag-to-Applications installer).
+# Builds a Developer ID-signed Vox.app and packages it as a notarized build/Vox-<version>.dmg
+# (drag-to-Applications installer). Each run releases the next version from ./VERSION:
+#   ./make-dmg.sh         1.0 → 1.1
+#   ./make-dmg.sh 2.0     release as 2.0
+# The build number always goes up by one. ./VERSION is only updated once notarization succeeds,
+# so a failed run can simply be retried. Notarization uses credentials saved once with:
+#   xcrun notarytool store-credentials vox-notary --apple-id <email> --team-id <team id>
 set -euo pipefail
 cd "$(dirname "$0")"
 
-./build.sh
+NOTARY_PROFILE="${NOTARY_PROFILE:-vox-notary}"
 
-VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" build/Vox.app/Contents/Info.plist)
+source VERSION
+if [ -n "${1:-}" ]; then
+    VERSION="$1"
+else
+    VERSION="${VERSION%.*}.$(( ${VERSION##*.} + 1 ))"   # bump the last component
+fi
+BUILD=$((BUILD + 1))
+echo "Releasing Vox $VERSION (build $BUILD)"
+
+VOX_VERSION="$VERSION" VOX_BUILD="$BUILD" ./build.sh --release
+IDENTITY=$(codesign -dvv build/Vox.app 2>&1 | sed -nE 's/^Authority=(Developer ID Application: .*)/\1/p')
+
 DMG="build/Vox-$VERSION.dmg"
 RW_DMG="build/Vox-rw.dmg"
 VOLNAME="Vox"
@@ -56,4 +73,14 @@ EOF
 sync
 hdiutil detach "$DEVICE" >/dev/null
 hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -o "$DMG" >/dev/null
+
+# Notarizing the DMG covers the app inside it; stapling attaches the ticket so Gatekeeper
+# can verify it offline.
+codesign --timestamp --sign "$IDENTITY" "$DMG"
+echo "Notarizing $DMG (usually takes a few minutes)..."
+xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+xcrun stapler staple "$DMG"
+spctl -a -t open --context context:primary-signature -vv "$DMG"
+
+printf 'VERSION=%s\nBUILD=%s\n' "$VERSION" "$BUILD" > VERSION
 echo "Built $DMG"

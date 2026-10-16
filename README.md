@@ -17,18 +17,26 @@ On first launch:
 ## Distributing
 
 ```sh
-./make-dmg.sh   # → build/Vox-<version>.dmg
+./make-dmg.sh       # next version (1.0 → 1.1) → build/Vox-1.1.dmg, signed and notarized
+./make-dmg.sh 2.0   # or pick the version yourself
 ```
 
-The DMG has the usual drag-to-Applications layout. The app is signed with the local self-signed identity,
-not an Apple Developer ID, so on other Macs Gatekeeper blocks the first launch. Users can allow it in
-**System Settings → Privacy & Security → Open Anyway**, or run `xattr -dr com.apple.quarantine /Applications/Vox.app`.
+The current version and build number live in `VERSION`; `make-dmg.sh` bumps them only after notarization succeeds.
+
+The DMG has the usual drag-to-Applications layout. `make-dmg.sh` builds with `./build.sh --release`, which signs
+the app with the "Developer ID Application" identity in your keychain (hardened runtime, `Resources/Vox.entitlements`),
+then signs the DMG, notarizes it with Apple and staples the ticket, so it opens on other Macs without Gatekeeper warnings.
+It needs notarization credentials saved once as the `vox-notary` profile:
+
+```sh
+xcrun notarytool store-credentials vox-notary --apple-id <your Apple ID> --team-id <team ID>
+```
 
 The app icon lives in `Resources/AppIcon.icns`; regenerate it with `swift scripts/make-icon.swift Resources/AppIcon.icns`.
 The installer window background lives in `Resources/DMGBackground.tiff`; regenerate it with
 `swift scripts/make-dmg-background.swift Resources/DMGBackground.tiff`.
 
-`build.sh` signs the app with a self-signed "Vox Local Signing" identity (created on first build in
+A plain `./build.sh` (for development) signs the app with a self-signed "Vox Local Signing" identity (created on first build in
 `~/Library/Keychains/vox-signing.keychain-db`), so the Accessibility grant survives rebuilds.
 
 ## Settings (menu bar mic icon → Settings…)
