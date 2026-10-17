@@ -48,12 +48,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] history in self?.copyLastItem.isEnabled = !history.isEmpty }
             .store(in: &cancellables)
 
+        // Open the window on first launch (or until an API key is set) before any permission
+        // prompts, so the app comes to the front instead of only appearing in the menu bar.
+        let isFirstLaunch = !UserDefaults.standard.bool(forKey: PrefKey.hasLaunched)
+        UserDefaults.standard.set(true, forKey: PrefKey.hasLaunched)
+        if isFirstLaunch || !store.hasAPIKey {
+            mainWindow.show(pane: store.hasAPIKey ? .home : .settings)
+        }
+
         startHotkey()
         AVCaptureDevice.requestAccess(for: .audio) { _ in }
-
-        if !store.hasAPIKey {
-            mainWindow.show(pane: .settings)
-        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

@@ -38,7 +38,12 @@ struct SettingsPane: View {
             } footer: {
                 HStack(spacing: 4) {
                     Text("The default model is used by profiles that don't pick their own.")
-                    Link("Get an API key", destination: URL(string: "https://aistudio.google.com/apikey")!)
+                    Link(destination: URL(string: "https://aistudio.google.com/apikey")!) {
+                        HStack(spacing: 2) {
+                            Text("Get an API key").underline()
+                            Image(systemName: "arrow.up.right.square")
+                        }
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)

@@ -6,6 +6,7 @@ enum PrefKey {
     static let autoPaste = "autoPaste"
     static let playSounds = "playSounds"
     static let apiKey = "geminiAPIKey"
+    static let hasLaunched = "hasLaunched"
 }
 
 enum RecordMode: String, CaseIterable, Identifiable {
